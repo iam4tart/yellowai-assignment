@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+agent_inbox.db
+agent_inbox.db-shm
+agent_inbox.db-wal
+.DS_Store

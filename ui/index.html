@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Yellow.ai Agent Inbox</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Top Navigation & Agent Switcher -->
+  <header class="navbar">
+    <div class="brand">
+      <span class="logo">⚡</span>
+      <h2>Yellow.ai Inbox</h2>
+    </div>
+    <div class="agent-picker">
+      <label for="agentSelect">Active Agent:</label>
+      <select id="agentSelect">
+        <option value="token_acme_1" data-ws="acme" data-name="Alice (Acme)">Alice — Acme</option>
+        <option value="token_acme_2" data-ws="acme" data-name="Bob (Acme)">Bob — Acme</option>
+        <option value="token_globex_1" data-ws="globex" data-name="Charlie (Globex)">Charlie — Globex</option>
+        <option value="token_globex_2" data-ws="globex" data-name="Dana (Globex)">Dana — Globex</option>
+      </select>
+      <span id="tenantBadge" class="badge">Workspace: acme</span>
+    </div>
+  </header>
+
+  <!-- Main Split Layout -->
+  <main class="inbox-container">
+    <!-- Left Sidebar: Queue Views -->
+    <aside class="sidebar">
+      <div class="tabs">
+        <button id="tabUnassigned" class="tab-btn active" onclick="switchView('unassigned')">
+          Unassigned <span id="countUnassigned" class="pill">0</span>
+        </button>
+        <button id="tabMine" class="tab-btn" onclick="switchView('mine')">
+          Mine <span id="countMine" class="pill">0</span>
+        </button>
+      </div>
+      <div id="conversationList" class="conversation-list">
+        <div class="empty-state">Loading conversations...</div>
+      </div>
+    </aside>
+
+    <!-- Right Pane: Active Conversation Thread -->
+    <section class="chat-pane">
+      <div id="threadHeader" class="chat-header">
+        <div class="header-details">
+          <h3 id="chatCustomer">Select a conversation</h3>
+          <p id="chatMeta">No conversation selected</p>
+        </div>
+        <div id="claimContainer" style="display: none;">
+          <button id="claimBtn" class="btn-claim" onclick="claimActiveConversation()">Claim Ticket</button>
+        </div>
+      </div>
+
+      <div id="bannerAlert" class="banner-alert" style="display: none;"></div>
+
+      <div id="messagesContainer" class="messages-container">
+        <div class="empty-state">Select a conversation from the left to view messages.</div>
+      </div>
+
+      <div class="reply-container">
+        <form id="replyForm" onsubmit="sendReply(event)">
+          <input type="text" id="replyInput" placeholder="Type your reply..." disabled autocomplete="off" />
+          <button type="submit" id="sendBtn" class="btn-send" disabled>Send</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

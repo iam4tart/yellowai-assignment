@@ -1,6 +1,6 @@
 # Yellow.ai Agent Inbox
 
-A stripped-down, multi-tenant customer support inbox featuring idempotent webhook ingestion and atomic conversation claiming.
+A multi-tenant support agent inbox with idempotent webhook ingestion and race-condition-safe claiming.
 
 ---
 
@@ -8,78 +8,66 @@ A stripped-down, multi-tenant customer support inbox featuring idempotent webhoo
 
 ```mermaid
 flowchart TD
-    WH["Channel Provider Webhook"] -->|POST /webhooks/inbound| SEC["X-Webhook-Secret Validator"]
-    SEC --> W_ROUTE["webhooks.py"]
-    W_ROUTE -->|"INSERT OR IGNORE"| DB_MSG[("messages table")]
-    W_ROUTE -->|"Upsert thread"| DB_CONV[("conversations table")]
+    WH["Channel Provider"] -->|POST /webhooks/inbound| SEC["Secret Auth"]
+    SEC --> DB_MSG[("messages: INSERT OR IGNORE")]
+    SEC --> DB_CONV[("conversations: Upsert")]
 
-    BROWSER["Agent UI (Browser)"] -->|Bearer Token| AUTH["dependencies.py"]
-    AUTH --> C_ROUTE["conversations.py"]
-    C_ROUTE -->|"Scope: workspace_id"| DB_CONV
-    C_ROUTE -->|"Atomic UPDATE ... WHERE assigned_agent_id IS NULL"| DB_CONV
-    C_ROUTE -->|"ORDER BY sent_at ASC"| DB_MSG
+    UI["Agent Browser"] -->|Bearer Token| AUTH["Tenant Guard"]
+    AUTH --> QUEUE["GET /conversations?view=mine/unassigned"]
+    AUTH --> CLAIM["POST /claim: Atomic UPDATE"]
+    AUTH --> REPLY["POST /messages: Assigned Only"]
+
+    CLAIM --> DB_CONV
+    QUEUE --> DB_CONV
+    REPLY --> DB_MSG
 ```
 
 ---
 
 ### Quick Start
 
-1. **Activate Virtual Environment & Install Dependencies**:
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\pip install -r requirements.txt
-   ```
+Run the all-in-one startup script (creates venv, installs dependencies, seeds database, and boots backend + UI):
 
-2. **Seed Database**:
-   ```powershell
-   .\.venv\Scripts\python seed.py
-   ```
-   * Seeds 2 workspaces (`acme`, `globex`).
-   * Seeds 4 agents with static tokens:
-     * `token_acme_1` (Alice - Acme)
-     * `token_acme_2` (Bob - Acme)
-     * `token_globex_1` (Charlie - Globex)
-     * `token_globex_2` (Dana - Globex)
+```powershell
+.\start.ps1
+```
 
-3. **Start the Server**:
-   ```powershell
-   .\.venv\Scripts\python -m uvicorn main:app --reload
-   ```
-   Open **http://127.0.0.1:8000** in your browser to view the live dashboard.
+> **Live UI**: Open **http://127.0.0.1:8000** in your browser.  
+> Switch between agents (**Alice / Bob** for Acme, **Charlie / Dana** for Globex) using the top-right dropdown.
 
 ---
 
 ### Quick Test
 
-Run the automated verification suite:
+Run the 5-proof verification suite:
+
 ```powershell
 .\.venv\Scripts\python test_suite.py
 ```
 
-#### Included Test Cases:
-1. `test_webhook_deduplication`: Confirms duplicate `message_id` retries return `200 OK` (`deduplicated=True`) and store exactly 1 row.
-2. `test_tenant_isolation`: Confirms Acme agents get `404 Not Found` for Globex resources.
-3. `test_concurrent_claims`: Fires two simultaneous claim threads at the exact same millisecond; verifies exactly one returns `200` and the other returns `409 Conflict` naming the winner.
-4. `test_reply_authorization`: Confirms only the assigned agent can reply (`201`), rejecting other agents with `403 Forbidden`.
-5. `test_chronological_ordering`: Confirms messages return sorted by `sent_at ASC`.
+* `test_webhook_deduplication` $\rightarrow$ Duplicate `message_id` returns `200` (`deduplicated=True`) and stores exactly 1 row.
+* `test_tenant_isolation` $\rightarrow$ Cross-tenant access returns `404 Not Found`.
+* `test_concurrent_claims` $\rightarrow$ Simultaneous claims yield exactly one `200` (winner) and one `409 Conflict` (loser).
+* `test_reply_authorization` $\rightarrow$ Assigned agent gets `201`; other agent gets `403 Forbidden`.
+* `test_chronological_ordering` $\rightarrow$ Messages sorted strictly by `sent_at ASC`.
 
 ---
 
 ### API Endpoints
 
-| Method | Endpoint | Headers | Description |
+| Method | Endpoint | Header | Purpose |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/webhooks/inbound` | `X-Webhook-Secret: whsec_yellow_test_secret` | Ingests customer message. Creates conversation as unassigned. Deduplicates on `message_id`. |
-| `GET` | `/conversations?view=unassigned\|mine` | `Authorization: Bearer <token>` | Lists queue conversations scoped to the agent's workspace. |
-| `GET` | `/conversations/:id` | `Authorization: Bearer <token>` | Returns thread messages in chronological order (`sent_at ASC`). Returns 404 for other tenants. |
-| `POST` | `/conversations/:id/claim` | `Authorization: Bearer <token>` | Atomically claims an unassigned ticket. Returns 200 on success, 409 on conflict. |
-| `POST` | `/conversations/:id/messages` | `Authorization: Bearer <token>` | Sends an agent reply. Returns 201 for assigned agent, 403 otherwise. |
+| `POST` | `/webhooks/inbound` | `X-Webhook-Secret: whsec_yellow_test_secret` | Ingest customer message (`201` new / `200` duplicate). |
+| `GET` | `/conversations?view=unassigned\|mine` | `Authorization: Bearer <token>` | Scoped queue list with waiting time. |
+| `GET` | `/conversations/:id` | `Authorization: Bearer <token>` | Thread messages ordered by `sent_at` (`404` cross-tenant). |
+| `POST` | `/conversations/:id/claim` | `Authorization: Bearer <token>` | Atomic claim (`200` win / `409` conflict). |
+| `POST` | `/conversations/:id/messages` | `Authorization: Bearer <token>` | Outbound reply (`201` assigned / `403` unassigned). |
 
 ---
 
 ### Test Inbound Webhook
 
-Simulate a new inbound WhatsApp/web chat message:
+Simulate an incoming WhatsApp/chat message (will pop up in UI within 2s without page reload):
 
 ```powershell
 curl -X POST "http://127.0.0.1:8000/webhooks/inbound" `
@@ -90,8 +78,15 @@ curl -X POST "http://127.0.0.1:8000/webhooks/inbound" `
     "conversation_id": "conv_demo_1",
     "message_id": "msg_demo_101",
     "customer_name": "Elon Musk",
-    "text": "Hello, need assistance with my order.",
+    "text": "Where is my order?",
     "sent_at": "2026-10-09T14:30:00Z"
   }'
 ```
-*(The message appears in the UI instantly via the 2-second polling loop without page reload).*
+
+---
+
+### How You'd Tell It's Broken
+
+1. **Test Suite Failure**: `python test_suite.py` fails on any concurrency, duplicate, or isolation assertion.
+2. **HTTP 409 Spikes**: Legitimate claims failing repeatedly indicating race-condition contention or lock staleness.
+3. **Database Leaks**: Cross-tenant query returning anything other than `404`.

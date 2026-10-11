@@ -4,6 +4,8 @@ A multi-tenant support agent inbox with idempotent webhook ingestion, race-condi
 
 I haven't used mutex locks, instead conditional command sin SQL because in distributed systems, where there are more than 2 servers, each won't be aware of lock state in other. therefore inherent DB locking - row level especially is much better.
 
+however, inherently this application is not ready for scalability obviously because as interviewer helped me figure out that sqlite allows sequential 1 by 1 write only, worse than postgreSQL, but my choice of db was for interview.
+
 ---
 
 ### Architecture

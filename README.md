@@ -2,10 +2,13 @@
 
 A multi-tenant support agent inbox with idempotent webhook ingestion, race-condition-safe claiming, and real-time polling.
 
-I haven't used mutex locks, instead conditional command sin SQL because in distributed systems, where there are more than 2 servers, each won't be aware of lock state in other. therefore inherent DB locking - row level especially is much better.
+I haven't used mutex locks, instead conditional commands in SQL because in distributed systems, where there are more than 2 servers, each won't be aware of lock state in other. therefore inherent DB locking - row level especially is much better.
 
-however, inherently this application is not ready for scalability obviously because as interviewer helped me figure out that sqlite allows sequential 1 by 1 write only, worse than postgreSQL, but my choice of db was for interview.
+however, inherently this application is not ready for scalability obviously because as interviewer helped me figure out that sqlite only allows db level locking and no other which is worse than postgreSQL, and my choice of db was only fine for interview.
 
+Correctness is enforced by DB, for 1M/hour requests, I'd likely move to postgrSQL, add a connection pool, multiple workers, also port code to golang because of it's concurrency provided by GMP architecture
+
+(
 ---
 
 ### Architecture
